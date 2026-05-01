@@ -1,0 +1,249 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage{setspace}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\setstretch{1.08}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+
+\definecolor{mainblue}{RGB}{25,65,125}
+\definecolor{lightblue}{RGB}{237,243,252}
+\definecolor{softgray}{RGB}{90,90,90}
+
+\titleformat{\section}{\large\bfseries\color{mainblue}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalsize\bfseries\color{mainblue}}{\thesubsection}{0.8em}{}
+
+\newtcolorbox{questionbox}{
+  colback=lightblue,
+  colframe=mainblue,
+  boxrule=0.6pt,
+  arc=2mm,
+  left=2mm,
+  right=2mm,
+  top=1mm,
+  bottom=1mm
+}
+
+\newcommand{\question}[1]{
+  \begin{questionbox}
+  \textbf{Question :} #1
+  \end{questionbox}
+}
+
+\newcommand{\reponse}{\textbf{Réponse : }}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Fiche Question / Réponse}}\\[0.3em]
+  {\large Système intelligent de régulation du trafic urbain en temps réel}\\[0.4em]
+  {\normalsize Révision pour rapport, soutenance et démonstration}
+\end{center}
+
+\section*{Résumé du projet}
+
+Le projet simule une ville avec plusieurs intersections. Des producteurs Python génèrent en continu des événements de trafic et des incidents. Kafka transporte ces flux, Spark Structured Streaming les traite pour calculer une décision de régulation, puis Flask expose les résultats dans une API REST et un dashboard.
+
+\section{Compréhension générale}
+
+\question{Expliquer le scénario du projet sous forme de storytelling}
+\reponse Imaginez une ville intelligente où chaque intersection possède des capteurs. Chaque seconde, ces capteurs comptent les véhicules, estiment leur vitesse et transmettent l'information. En parallèle, un autre système signale des perturbations comme un accident, des travaux ou une inondation. Tous ces événements arrivent dans Kafka, qui agit comme un centre de circulation des messages. Spark lit ensuite ces flux en continu, regroupe les informations par intersection et par fenêtre de temps, regarde si un incident est actif, puis décide comment adapter les feux de circulation. Enfin, Flask affiche les résultats dans une interface web simple pour permettre à l'utilisateur de voir l'état du trafic presque en temps réel.
+
+\question{Est-ce un système en temps réel ?}
+\reponse Oui, au sens applicatif et streaming, car les données sont produites, transportées, traitées et affichées en continu. La nuance est que Spark fonctionne ici en \textit{micro-batch}, donc il s'agit plus précisément d'un système en \textbf{quasi temps réel} qu'en temps réel dur.
+
+\question{Pourquoi peut-on dire que c'est du streaming ?}
+\reponse Parce que les données sont produites en flux continu, envoyées immédiatement dans Kafka, puis lues en continu par Spark Structured Streaming. Le pipeline ne travaille pas sur un fichier statique complet, mais sur des événements qui arrivent au fur et à mesure.
+
+\question{D'où vient la data ?}
+\reponse La data est simulée par les scripts Python du projet. Les véhicules sont générés dans \texttt{producers/vehicle\_producer.py} et les incidents dans \texttt{producers/incident\_producer.py}. Il ne s'agit pas de vrais capteurs physiques, mais d'une simulation réaliste.
+
+\section{Kafka}
+
+\question{Qu'est-ce qu'un événement Kafka dans ce projet ?}
+\reponse Un événement Kafka est un message métier envoyé dans un topic. Dans ce projet, un événement peut être un état de circulation d'une intersection, un incident routier ou une décision de régulation calculée par Spark.
+
+\question{Quels sont les topics du projet ?}
+\reponse Le projet utilise trois topics principaux :
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{vehicles} : contient les événements de trafic.
+  \item \texttt{incidents} : contient les événements d'incident.
+  \item \texttt{traffic\_decisions} : contient les décisions finales calculées par Spark.
+\end{itemize}
+
+\question{Qui sont les brokers ?}
+\reponse Un broker Kafka est un serveur Kafka qui stocke et distribue les messages. Dans ce projet, il n'y a qu'un seul broker : le service \texttt{kafka} défini dans \texttt{docker-compose.yml}. Il ne s'agit donc pas d'un cluster Kafka multi-brokers.
+
+\question{Quel est le rôle de Kafka dans ce projet ?}
+\reponse Kafka sert de bus de messages temps réel. Il reçoit les événements produits par les producteurs, les organise dans des topics, permet à Spark de les consommer, puis transporte aussi les décisions produites par Spark vers le service Flask.
+
+\question{Comment Kafka aide-t-il à la décision de trafic ?}
+\reponse Kafka ne prend pas lui-même la décision. Son rôle est de rendre les événements disponibles rapidement et de découpler les composants. Grâce à Kafka, Spark reçoit les données de trafic et les incidents sans dépendance directe avec les producteurs. Cela permet de calculer des décisions réactives.
+
+\question{Qu'est-ce que Kafka UI ?}
+\reponse Kafka UI est une interface web de supervision. Elle permet de voir les topics, d'inspecter les messages et de vérifier que les flux circulent correctement. Dans ce projet, elle est utile pour observer \texttt{vehicles}, \texttt{incidents} et \texttt{traffic\_decisions}.
+
+\question{Où voit-on dans le code qu'un topic est défini ?}
+\reponse Dans les producteurs, les topics sont définis par exemple par :
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{TOPIC = os.getenv("TOPIC", "vehicles")}
+  \item \texttt{TOPIC = os.getenv("TOPIC", "incidents")}
+\end{itemize}
+Dans le service Flask, le topic consommé est défini par :
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{INPUT\_TOPIC = os.getenv("INPUT\_TOPIC", "traffic\_decisions")}
+\end{itemize}
+
+\question{Où voit-on dans le code la publication et l'abonnement ?}
+\reponse La publication se voit dans les appels \texttt{producer.send(...)} ou \texttt{\_producer.send(...)}. L'abonnement côté Spark se voit avec \texttt{.option("subscribe", topic)}. L'abonnement côté Flask se voit avec \texttt{KafkaConsumer(INPUT\_TOPIC, ...)}.
+
+\section{Spark et le traitement streaming}
+
+\question{Quelle est la relation Spark - Kafka - Flask dans ce projet ?}
+\reponse Kafka reçoit les événements. Spark lit ces événements depuis Kafka, les traite et publie les décisions dans un autre topic Kafka. Ensuite Flask lit ce topic de décisions et affiche les résultats via API et dashboard.
+
+\question{Qu'est-ce que Spark Structured Streaming ?}
+\reponse Spark Structured Streaming est le module de Spark qui permet de traiter des flux continus sous forme de DataFrame. Il permet ici de lire Kafka, parser les JSON, regrouper les véhicules, gérer le temps et produire des décisions en continu.
+
+\question{Où Spark Structured Streaming est-il utilisé ?}
+\reponse Il est utilisé dans le job \texttt{spark\_jobs/traffic\_streaming.py}, en particulier avec \texttt{spark.readStream} pour lire les flux, puis \texttt{writeStream} pour lancer les traitements continus.
+
+\question{Qu'est-ce qu'un micro-batch ?}
+\reponse Un micro-batch est un petit lot de données collectées sur un très court intervalle de temps. Au lieu de traiter chaque message individuellement au moment exact de son arrivée, Spark accumule les messages pendant un court délai, puis traite ce petit lot d'un coup.
+
+\question{Quel est le mot clé du code qui montre le micro-batch ?}
+\reponse Les indices les plus importants sont :
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{trigger(processingTime="1 second")}
+  \item \texttt{trigger(processingTime="2 seconds")}
+  \item \texttt{foreachBatch(...)}
+\end{itemize}
+Le mot le plus révélateur est \texttt{processingTime}.
+
+\question{Micro-batch de quoi exactement ?}
+\reponse Il y a deux micro-batchs importants :
+\begin{itemize}[leftmargin=1.4em]
+  \item un micro-batch d'incidents, traité par \texttt{update\_incident\_state(batch\_df, batch\_id)}
+  \item un micro-batch de métriques de trafic agrégées, traité par \texttt{process\_vehicle\_batch(batch\_df, batch\_id)}
+\end{itemize}
+
+\question{Comment \texttt{foreachBatch} est-elle appelée ?}
+\reponse Spark appelle automatiquement la fonction à chaque micro-batch. La fonction reçoit :
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{batch\_df} : le DataFrame du lot courant
+  \item \texttt{batch\_id} : l'identifiant numérique du lot
+\end{itemize}
+
+\question{Qu'est-ce qu'une fenêtre temporelle ?}
+\reponse Une fenêtre temporelle est un intervalle de temps utilisé pour regrouper des événements avant calcul. Ici, les véhicules sont regroupés par intersection sur des fenêtres de 1 seconde afin de calculer le nombre total de véhicules et la vitesse moyenne.
+
+\question{Quel est le rôle de la fenêtre temporelle ?}
+\reponse Elle permet de transformer un flux brut d'événements individuels en métriques synthétiques exploitables pour la décision. Sans fenêtre, il serait plus difficile d'estimer proprement l'état du trafic.
+
+\question{Quelle ligne de code montre la fenêtre temporelle ?}
+\reponse La ligne clé est l'utilisation de \texttt{window(col("event\_time"), "1 second", "1 second")}.
+
+\question{Qu'est-ce qu'un watermark ?}
+\reponse Un watermark est un mécanisme de Spark Structured Streaming pour gérer les événements en retard. Il définit jusqu'à quel point Spark accepte des données tardives avant de considérer qu'elles sont trop anciennes pour être intégrées au calcul.
+
+\question{À quoi sert le watermark dans ce projet ?}
+\reponse Il évite que l'état streaming grossisse indéfiniment et permet à Spark de mieux gérer le temps événementiel lorsque certains messages arrivent en retard.
+
+\question{Où voit-on le watermark dans le code ?}
+\reponse Avec \texttt{.withWatermark("event\_time", "1 second")} sur les flux véhicules et incidents.
+
+\section{Logique métier de décision}
+
+\question{Comment la décision est-elle calculée ?}
+\reponse Spark combine deux dimensions :
+\begin{itemize}[leftmargin=1.4em]
+  \item l'intensité du trafic : nombre de véhicules et vitesse moyenne
+  \item la gravité du pire incident actif sur l'intersection
+\end{itemize}
+À partir de cela, le code calcule un score puis choisit un mode de trafic, ainsi qu'une durée de feu vert et de feu rouge.
+
+\question{Quels sont les modes de trafic possibles ?}
+\reponse Les modes sont :
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{FLUID}
+  \item \texttt{MODERATE}
+  \item \texttt{DENSE}
+  \item \texttt{CONGESTION}
+  \item \texttt{EMERGENCY}
+\end{itemize}
+
+\question{Quel est le sens métier de \texttt{intersection\_id} ?}
+\reponse \texttt{intersection\_id} est la clé métier centrale du projet. Elle identifie chaque carrefour, permet de regrouper les véhicules, de rattacher les incidents et de produire une décision spécifique à cette intersection.
+
+\question{Quel est le rôle de la métrique intersection dans le scénario ?}
+\reponse Le projet ne cherche pas à réguler toute la ville globalement avec une seule décision. Il cherche à prendre une décision locale par carrefour. \texttt{intersection\_id} permet donc une régulation fine, intersection par intersection.
+
+\question{Comment les incidents influencent-ils la décision ?}
+\reponse Le job Spark conserve les incidents actifs par intersection. Lorsqu'il traite un lot de trafic, il récupère la sévérité maximale de l'incident encore actif pour l'intersection concernée. Cette sévérité augmente le score de danger ou déclenche directement un mode d'urgence.
+
+\question{Que veut dire \texttt{config["severity"]} dans le code ?}
+\reponse \texttt{config} est un dictionnaire contenant la configuration d'un type d'incident. Par exemple, après \texttt{config = INCIDENT\_TYPES[incident\_type]}, l'expression \texttt{config["severity"]} signifie simplement : récupérer la gravité associée à cet incident.
+
+\section{Flask et l'état mémoire}
+
+\question{Qu'est-ce que Flask ?}
+\reponse Flask est un framework web Python léger. Il sert à créer rapidement une API REST et à retourner des pages HTML.
+
+\question{Quel est le rôle de Flask dans ce projet ?}
+\reponse Flask joue le rôle de couche de restitution. Il consomme les décisions depuis Kafka, conserve le dernier état connu de chaque intersection, expose une API et affiche un dashboard web.
+
+\question{Quelle ligne de code crée l'application Flask ?}
+\reponse La ligne clé est \texttt{app = Flask(\_\_name\_\_)}.
+
+\question{Comment le dernier état est-il gardé en mémoire ?}
+\reponse Le dernier état est gardé dans le dictionnaire global \texttt{traffic\_state}. À chaque nouvelle décision reçue, la valeur associée à \texttt{intersection\_id} est mise à jour. On conserve donc le dernier état connu pour chaque intersection.
+
+\question{Où cet état est-il gardé ?}
+\reponse Il est gardé en mémoire RAM dans le processus Python du service Flask. Il n'est pas stocké dans une base de données.
+
+\question{Pourquoi utilise-t-on aussi un verrou ?}
+\reponse Le thread Kafka met à jour l'état pendant que Flask peut répondre aux requêtes HTTP. Le verrou \texttt{state\_lock} évite les conflits d'accès entre ces deux activités.
+
+\section{Fiabilité et déploiement}
+
+\question{Qu'est-ce que retry / backoff ?}
+\reponse \textit{Retry} signifie réessayer après un échec. \textit{Backoff} signifie augmenter progressivement le temps d'attente entre deux tentatives. C'est utile quand Kafka n'est pas encore prêt au démarrage.
+
+\question{Comment le retry / backoff est-il implémenté ici ?}
+\reponse Le code essaie de se connecter à Kafka dans une boucle. Si la connexion échoue, il attend quelques secondes puis réessaie. Le délai augmente progressivement, par exemple de 5 secondes jusqu'à 30 secondes.
+
+\question{Comment Zookeeper garantit-il la haute disponibilité dans ce projet ?}
+\reponse En réalité, il ne garantit pas une vraie haute disponibilité ici, car il n'y a qu'une seule instance Zookeeper et un seul broker Kafka. Zookeeper sert à la coordination de Kafka, mais la HA au sens fort nécessiterait plusieurs nœuds redondants.
+
+\question{Pourquoi Docker Compose est important ici ?}
+\reponse Docker Compose permet de lancer tous les composants du système avec une seule configuration : Kafka, Zookeeper, Spark, producteurs, service Flask et Kafka UI. Cela rend l'environnement reproductible et facile à démontrer.
+
+\section{Réponse courte de soutenance}
+
+\question{Si on vous demande de résumer le pipeline en 20 secondes}
+\reponse Deux producteurs Python simulent la circulation et les incidents. Kafka transporte ces événements en flux continu. Spark Structured Streaming les traite en micro-batchs pour calculer une décision de régulation par intersection. Enfin, Flask consomme les décisions et les affiche dans une API et un dashboard.
+
+\question{Si on vous demande pourquoi ce projet est intéressant}
+\reponse Parce qu'il montre une architecture complète de traitement de flux temps réel : génération de données, transport distribué, traitement streaming, logique métier de décision, mesure de latence et restitution via interface web.
+
+\question{Si on vous demande la nuance technique la plus importante}
+\reponse Le projet est bien un système de streaming en quasi temps réel, mais le traitement Spark se fait en micro-batch et non en événement-par-événement strict.
+
+\end{document}
